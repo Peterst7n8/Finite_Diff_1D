@@ -4,30 +4,6 @@ import scipy.sparse.linalg as spla
 import numpy as np
 import matplotlib.pyplot as plt
 
-"""
-Fonctionnement de NB_NODE et de NB_NODE_REGION :
-
-NB_NODE 
-on considère un problème à N régions, de largeur l, dans lesquelles les propriétés neutros sont cstes
-on considère un pas de discrétisation h constant pour chaque région
-On calcule le flux à l'interface entre chaque régions ainsi qu'au sein de ces dernières si h!=l
-d'où NB_NODE = ((N*l)/h)+1
-
-Pour les région 0 et N (aux extrémités du domaine):
-on a NB_NODE_REGION = l/h
-pour les régions n (entre les régions 0 et N):
-on a NB_NODE_REGION = (l/h) - 1 
-
-Ainsi on a N-1 points non assignées à des régions, qui sont les interfaces entre les régions
-
-
-"""
-
-
-
-
-
-
 def extrapolated_distance(distance:float,h:float,over:bool=True):
     """
     Compute an extrapolated distance adjusted to the discretization step.
