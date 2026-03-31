@@ -1,10 +1,10 @@
-from Materials import *
+from .Materials import *
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import numpy as np
 import matplotlib.pyplot as plt
 
-def extrapolated_distance(distance:float,h:float,over:bool=True):
+def extrapolated_distance(mat:Material,h:float,over:bool=True):
     """
     Compute an extrapolated distance adjusted to the discretization step.
 
@@ -27,6 +27,9 @@ def extrapolated_distance(distance:float,h:float,over:bool=True):
     float
         Adjusted distance compatible with the discretization.
     """
+
+    distance = np.min(3*mat._diff_coef)
+
     if h >= 0.5:
         if over:
             return (int(distance/h)+1)*h
@@ -39,7 +42,7 @@ def extrapolated_distance(distance:float,h:float,over:bool=True):
             return (int((0.7104*distance)/h))*h
 
 
-class Finite_Diff:
+class Solver:
     """
     Finite difference solver for multigroup neutron diffusion problems.
 
@@ -512,7 +515,7 @@ class Finite_Diff:
             err_k = np.absolute(k - k_old)
             err_q = np.absolute(Q - Q_old)
             if (err_k <= eps and np.all(err_q <= eps)):
-                print(i)
+                print(i,'Convergence')
                 break
             print(i,k,err_k)
 

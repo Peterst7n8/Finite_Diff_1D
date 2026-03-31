@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finite_diff_1d"
+version = "0.1.0"
+description = "1D multigroup neutron diffusion solver"
+authors = [
+    { name = "Pierre Boussemart" }
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "periodictable"
+
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

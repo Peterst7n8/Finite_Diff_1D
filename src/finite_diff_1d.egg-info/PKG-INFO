@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: finite_diff_1d
+Version: 0.1.0
+Summary: 1D multigroup neutron diffusion solver
+Author: Pierre Boussemart
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: matplotlib
+Requires-Dist: periodictable
