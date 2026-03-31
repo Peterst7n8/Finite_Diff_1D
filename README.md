@@ -2,8 +2,6 @@
 
 This project implements a finite difference solver for the multi-group neutron diffusion equation, along with a material module for handling nuclear data.
 
----
-
 ## Features
 
 ### Solver
@@ -23,35 +21,22 @@ This project implements a finite difference solver for the multi-group neutron d
 * Microscopic → macroscopic cross section conversion
 * CSV-based nuclear data loading
 
----
+### Model
 
-## Model
+Solves the multi-group diffusion equation in 1D heterogenous geometries
 
-Solves the multi-group diffusion equation 
+### Input Data
 
----
 
-## Input Data
 
-CSV format, generated from OPENMC in the format 
+### Output Data
 
-```
-nuclide, group in, group out, mean, std dev
-```
-
-Supported types:
-
-* `scat`, `abs`, `fiss`, `diff`
-
----
 
 ## Limitations
 
 * Mainly 1D
 * No acceleration 
 * Limited validation and error handling
-
----
 
 ## Notes
 
