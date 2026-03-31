@@ -21,15 +21,9 @@ This project implements a finite difference solver for the multi-group neutron d
 * Microscopic → macroscopic cross section conversion
 * CSV-based nuclear data loading
 
-### Model
+### Physics solved
 
-Solves the multi-group diffusion equation in 1D heterogenous geometries
-
-### Input Data
-
-
-
-### Output Data
+Multi-group neutron diffusion equation in 1D heterogenous geometries
 
 
 ## Limitations
