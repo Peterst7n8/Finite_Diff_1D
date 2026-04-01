@@ -97,23 +97,23 @@ start = time.time()
 # Hence we had the distance d to the first and last regions of the domain
 
 # We precise the discretization step
-h = 1
+h = 0.001
 
 # We calculate the extrapolated distance using the function extrapolated_distance
 # defined in Solver.py
 extra_dist = extrapolated_distance(refl,h,False)
 
 # We create the geometry
-geom = {refl:20+extra_dist,fuel:20,refl.clone():20+extra_dist}
+geom = {refl:20+extra_dist,fuel:10}
 
 # We define the boundary conditions 
-bc_right = 'void'
+bc_right = 'reflective'
 bc_left = 'void'
 
 # We define the spatial discretization step for each region
 
 # We create an instance of Solver that will contain the results, matrices, etc...
-f_1d = Solver(groups=4,geom=geom,step=[h,h,h],bc_left=bc_left,bc_right=bc_right) 
+f_1d = Solver(groups=4,geom=geom,step=[h,h],bc_left=bc_left,bc_right=bc_right) 
 
 
 ## --------------- CALCULATION ---------------- ##
@@ -182,14 +182,14 @@ flux_rapide = flux_rapide/flux_rapide.max()
 flux_mc = np.loadtxt('flux_mc_w_void.csv',dtype=float)
 
 #We normalize it too
-flux_th_mc = flux_mc[:,0]/flux_mc[:,0].max()
-flux_f_mc = flux_mc[:,1]/flux_mc[:,1].max()
+flux_th_mc = flux_mc[:int(flux_mc.shape[0]/2),0]/flux_mc[:,0].max()
+flux_f_mc = flux_mc[:int(flux_mc.shape[0]/2),1]/flux_mc[:,1].max()
 
 #We recreate the grid the reference flux was created on
-x_mc_init = np.linspace(-30,30,200)
+x_mc_init = np.linspace(-30,0,100)
 
 # We create the grid used by the solver for its calculation
-x = np.arange(-30-extra_dist,30+extra_dist+h,h)
+x = np.arange(-30-extra_dist,h,h)
 
 # We interpolate the reference flux with the calculation grid and ask for an extrapolation of the 
 # reference flux onto the extrapolated_distance
@@ -206,7 +206,14 @@ flux_tot = flux_thermique + flux_rapide
 err = ((flux_tot/flux_tot_mc)-1)
 
 # We inform the user of the maximum relative error (in absolute value)
-print('Maximum Relative Error (Absolute value) :',np.max(np.abs(err))*100,'%')
+# WARNING : As the reference flux has been extrapolated to it the grid of the 
+# solver's calculation (the additionnal distance for the zero flux condition), 
+# we do not consider the error in the extrapolated distance.
+if int(extra_dist/h) != 0:
+    err_max = np.max(np.abs(err[int(extra_dist/h)+1:-int(extra_dist/h)-1]))*100
+else :
+    err_max = np.max(np.abs(err))*100
+print('Maximum Relative Error (Absolute value) :',err_max,'%')
 
 
 
@@ -234,6 +241,6 @@ print(f"""
 --- Simulation Summary ---
 k-eff                 : {f_1d.k:.5f}
 Error k-eff (pcm)     : {(f_1d.k - k_ref)*1e5:.1f}
-Max. Rel. Error Flux  : {np.max(np.abs(err))*100:.2f} %
+Max. Rel. Error Flux  : {err_max:.2f} %
 Time                  : {t_xs+t_mat+t_solve:.2f} s
 """)

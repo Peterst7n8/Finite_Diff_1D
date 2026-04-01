@@ -130,24 +130,9 @@ class Solver:
             self.nb_nodes = int(self.region_size[0]/self.step[0])+1
             self.nb_nodes_region = [self.nb_nodes]
 
-        match(dim):
-            case 2:
-                self.phi = np.ones((int((self.nb_nodes**2)*groups)))
-                self.F = sp.lil_matrix((int((self.nb_nodes**2)*groups),int((self.nb_nodes**2)*groups)),dtype=float)
-                self.A = sp.lil_matrix((int((self.nb_nodes**2)*groups),int((self.nb_nodes**2)*groups)),dtype=float)
-                self.S = sp.lil_matrix((int((self.nb_nodes**2)*groups),int((self.nb_nodes**2)*groups)),dtype=float)
-                self.k = 0
-                self.method = method
-
-            case default:
-                self.phi = np.ones((int(self.nb_nodes*groups)),float)
-                self.F = sp.lil_matrix((int(self.nb_nodes*groups),int(self.nb_nodes*groups)),dtype=float)
-                self.A = sp.lil_matrix((int(self.nb_nodes*groups),int(self.nb_nodes*groups)),dtype=float)
-                self.S = sp.lil_matrix((int(self.nb_nodes*groups),int(self.nb_nodes*groups)),dtype=float)
-                self.k = 0
-                self.method = method
-                self.bc_right = bc_right
-                self.bc_left = bc_left
+        self.method = method
+        self.bc_right = bc_right
+        self.bc_left = bc_left
 
 
     def prep_matrixes(self,plot,edge) -> None :
@@ -163,10 +148,40 @@ class Solver:
         edge : bool
             If True, includes edge contributions (boundary weighting).
         """
-        for i in range(self.groups):
+
+        active_groups = []
+
+        for g in range(self.groups):
+            is_active = False
+
+            for mat in self.materials:
+
+                if (mat._a_xs[g] > 0 or np.any(mat._nu_f_xs[g,:]) or np.any(mat._scat_xs[g,:])):
+                    is_active = True
+                    break
+            
+            if is_active:
+                active_groups.append(g)
+
+        if len(active_groups) == 0:
+            raise ValueError("No active energy groups found.")
+        
+
+        self.active_groups = active_groups
+        self.G_eff = len(active_groups)
+
+        N = self.nb_nodes
+        G = self.G_eff
+
+        self.A = sp.lil_matrix((N*G,N*G),dtype=float)
+        self.S = sp.lil_matrix((N*G,N*G),dtype=float)
+        self.F = sp.lil_matrix((N*G,N*G),dtype=float)
+
+
+        for i in range(G):
             self.A[i*self.nb_nodes:(i+1)*self.nb_nodes,i*self.nb_nodes:(i+1)*self.nb_nodes] = self.spatial_matrix_A(i,plot,edge)
-        for i in range(self.groups):
-            for j in range(self.groups):
+        for i in range(G):
+            for j in range(G):
                 self.S[i*self.nb_nodes:(i+1)*self.nb_nodes,j*self.nb_nodes:(j+1)*self.nb_nodes] = self.spatial_matrix_S(j,i,plot,edge)
                 self.F[i*self.nb_nodes:(i+1)*self.nb_nodes,j*self.nb_nodes:(j+1)*self.nb_nodes] = self.spatial_matrix_F(i,j,plot,edge)
 
@@ -500,10 +515,11 @@ class Solver:
         The final flux is normalized such that its sum equals 1.
         The multiplication factor is stored in `self.k`.
         """
+        self.phi = np.ones((self.G_eff*self.nb_nodes),float)
         k = 1
         Q =  self.phi @ (self.S + self.F)
 
-        phinew = np.zeros((self.groups*self.nb_nodes),float)
+        phinew = np.zeros((self.G_eff*self.nb_nodes),float)
         err_k = float(0)
         err_q = float(0)
         for i in range(itext):
@@ -522,10 +538,42 @@ class Solver:
         self.k = k
         self.phi = phinew/phinew.sum()
 
-
+        self.phi = self.expand_flux()
+        self.phi = np.nan_to_num(self.phi/self.phi.sum(),nan=0)
+        self.phi 
 
         return 
     
+    def expand_flux(self):
+        """
+        Reconstruct the full multigroup flux vector including inactive groups.
+
+        The solver operates on a reduced system where inactive energy groups
+        (with zero cross-sections) have been removed. This function rebuilds
+        the full flux vector by inserting zeros for those inactive groups.
+
+        Returns
+        -------
+        phi_full : ndarray
+            Full flux vector of size (groups * nb_nodes), where inactive
+            groups are filled with zeros.
+        """
+
+        if not hasattr(self, "active_groups"):
+            raise ValueError("Active groups not defined. Run prep_matrixes() first.")
+
+        N = self.nb_nodes
+        G_full = self.groups
+        G_eff = self.G_eff
+
+        phi_full = np.zeros(G_full * N)
+
+        # Remap reduced flux → full flux
+        for i_new, i_old in enumerate(self.active_groups):
+            phi_full[i_old*N:(i_old+1)*N] = self.phi[i_new*N:(i_new+1)*N]
+
+        return phi_full
+        
 
 
 
