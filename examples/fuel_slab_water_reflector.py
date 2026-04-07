@@ -54,13 +54,13 @@ fuel_density = 10.5
 fuel = Material(nuclides = fuel_comp,macro=True,density = fuel_density,groups=4)
 
 # We import the multigroup scattering matrix
-fuel.get_macro_xs('scat','mgxs_water_void/xs_scat_core.csv')
+fuel.get_macro_xs('scat','./examples/mgxs_water_void/xs_scat_core.csv')
 # We import the multigroup fission matrix
-fuel.get_macro_xs('fiss','mgxs_water_void/xs_f_core.csv')
+fuel.get_macro_xs('fiss','./examples/mgxs_water_void/xs_f_core.csv')
 # We import the multigroup absorption cross section
-fuel.get_macro_xs('abs','mgxs_water_void/xs_a_core.csv')
+fuel.get_macro_xs('abs','./examples/mgxs_water_void/xs_a_core.csv')
 # We import the multigroup diffusion coefficient
-fuel.get_diff('mgxs_water_void/diff_core.csv')
+fuel.get_diff('./examples/mgxs_water_void/diff_core.csv')
 
 # We repeat the operation for the water Material : 
 # - definition of composition, 
@@ -73,11 +73,11 @@ refl_density = 1
 refl = Material(nuclides=refl_comp,macro=True,density=refl_density,groups=4)
 
 # We import the multigroup scattering matrix
-refl.get_macro_xs('scat','mgxs_water_void/xs_scat_refl.csv')
+refl.get_macro_xs('scat','./examples/mgxs_water_void/xs_scat_refl.csv')
 # We import the multigroup absorption cross section
-refl.get_macro_xs('abs','mgxs_water_void/xs_a_refl.csv')
+refl.get_macro_xs('abs','./examples/mgxs_water_void/xs_a_refl.csv')
 # We import the multigroup diffusion coefficient
-refl.get_diff('mgxs_water_void/diff_refl.csv')
+refl.get_diff('./examples/mgxs_water_void/diff_refl.csv')
 
 t_xs = time.time() - start
 start = time.time()
@@ -97,23 +97,23 @@ start = time.time()
 # Hence we had the distance d to the first and last regions of the domain
 
 # We precise the discretization step
-h = 0.001
+h = 0.1
 
 # We calculate the extrapolated distance using the function extrapolated_distance
 # defined in Solver.py
 extra_dist = extrapolated_distance(refl,h,False)
 
 # We create the geometry
-geom = {refl:20+extra_dist,fuel:10}
+geom = {refl:20+extra_dist,fuel:20,refl.clone():20+extra_dist}
 
 # We define the boundary conditions 
-bc_right = 'reflective'
+bc_right = 'void'
 bc_left = 'void'
 
 # We define the spatial discretization step for each region
 
 # We create an instance of Solver that will contain the results, matrices, etc...
-f_1d = Solver(groups=4,geom=geom,step=[h,h],bc_left=bc_left,bc_right=bc_right) 
+f_1d = Solver(groups=4,geom=geom,step=[h,h,h],bc_left=bc_left,bc_right=bc_right) 
 
 
 ## --------------- CALCULATION ---------------- ##
@@ -121,7 +121,6 @@ f_1d = Solver(groups=4,geom=geom,step=[h,h],bc_left=bc_left,bc_right=bc_right)
 
 # We ask the solver to prepare the matrices for the calculation
 # WARNING : when h<0.01, the time for the assembly of the matrices can be long
-f_1d.prep_matrixes(False,False)
 
 t_mat = time.time() - start
 start = time.time()
@@ -179,17 +178,17 @@ flux_thermique = flux_thermique/flux_thermique.max()
 flux_rapide = flux_rapide/flux_rapide.max()
 
 # We load the reference thermal and fast flux generated via OpenMC
-flux_mc = np.loadtxt('flux_mc_w_void.csv',dtype=float)
+flux_mc = np.loadtxt('./examples/flux_mc_w_void.csv',dtype=float)
 
 #We normalize it too
-flux_th_mc = flux_mc[:int(flux_mc.shape[0]/2),0]/flux_mc[:,0].max()
-flux_f_mc = flux_mc[:int(flux_mc.shape[0]/2),1]/flux_mc[:,1].max()
+flux_th_mc = flux_mc[:,0]/flux_mc[:,0].max()
+flux_f_mc = flux_mc[:,1]/flux_mc[:,1].max()
 
 #We recreate the grid the reference flux was created on
-x_mc_init = np.linspace(-30,0,100)
+x_mc_init = np.linspace(-30,30,200)
 
 # We create the grid used by the solver for its calculation
-x = np.arange(-30-extra_dist,h,h)
+x = np.arange(-30-extra_dist,30+extra_dist+h,h)
 
 # We interpolate the reference flux with the calculation grid and ask for an extrapolation of the 
 # reference flux onto the extrapolated_distance

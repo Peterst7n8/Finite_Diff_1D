@@ -3,6 +3,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 
 def extrapolated_distance(mat:Material,h:float,over:bool=True):
     """
@@ -84,7 +85,7 @@ class Solver:
         Effective multiplication factor.
     """
 
-    def __init__(self,groups:int = 1,dim:int=1,geom:dict[Material,float] = {Material(nuclides = {'U238':1},macro=False,density=1,groups=1):1},step:np.ndarray = [1],method:str = 'Pierre',bc_left:str='void',bc_right:str='void'):
+    def __init__(self,groups:int = 1,dim:int=1,geom:dict[Material,float] = {Material(nuclides = {'U238':1},macro=False,density=1,groups=1):1},step:np.ndarray = [1],method:str = 'Pierre',bc_left:str='void',bc_right:str='void',plot:bool=False,edge:bool=False) -> Solver :
         """
         groups : int, number of groups in calculation
         geom : dict[Material,size], order of Material and size determines Geometry
@@ -134,8 +135,10 @@ class Solver:
         self.bc_right = bc_right
         self.bc_left = bc_left
 
+        self._prep_matrixes(plot=plot,edge=edge)
 
-    def prep_matrixes(self,plot,edge) -> None :
+
+    def _prep_matrixes(self,plot,edge) -> None :
         """
         Assemble the global matrices A, S, and F for all energy groups.
 
@@ -179,32 +182,32 @@ class Solver:
 
 
         for i in range(G):
-            self.A[i*self.nb_nodes:(i+1)*self.nb_nodes,i*self.nb_nodes:(i+1)*self.nb_nodes] = self.spatial_matrix_A(i,plot,edge)
-        for i in range(G):
-            for j in range(G):
-                self.S[i*self.nb_nodes:(i+1)*self.nb_nodes,j*self.nb_nodes:(j+1)*self.nb_nodes] = self.spatial_matrix_S(j,i,plot,edge)
-                self.F[i*self.nb_nodes:(i+1)*self.nb_nodes,j*self.nb_nodes:(j+1)*self.nb_nodes] = self.spatial_matrix_F(i,j,plot,edge)
+            self.A[i*self.nb_nodes:(i+1)*self.nb_nodes,i*self.nb_nodes:(i+1)*self.nb_nodes] = self.spatial_matrix_A(i,edge)
+        for g_out in range(G): 
+            for g_in in range(G): 
+                self.S[g_in*self.nb_nodes:(g_in+1)*self.nb_nodes,g_out*self.nb_nodes:(g_out+1)*self.nb_nodes] = self.spatial_matrix_S(g_out,g_in,edge)
+                self.F[g_in*self.nb_nodes:(g_in+1)*self.nb_nodes,g_out*self.nb_nodes:(g_out+1)*self.nb_nodes] = self.spatial_matrix_F(g_out,g_in,edge)
 
 
         if plot:
-            ax = plt.matshow(self.S.toarray())
+            ax = plt.matshow(self.S.toarray(),norm=colors.LogNorm())
             plt.colorbar(ax)
-            plt.title("Matrice S")
+            plt.title("Matrix S")
             plt.show()
 
 
-            ax = plt.matshow(self.F.toarray())
+            ax = plt.matshow(self.F.toarray(),norm=colors.LogNorm())
             plt.colorbar(ax)
-            plt.title("Matrice F")
+            plt.title("Matrix F")
             plt.show()
 
-            ax = plt.matshow(self.A.toarray())
+            ax = plt.matshow(self.A.toarray(),norm=colors.LogNorm())
             plt.colorbar(ax)
-            plt.title("Matrice A")
+            plt.title("Matrix A")
             plt.show()
                 
    
-    def A_B_Pi(self,group,plot,edge):
+    def A_B_Pi(self,group,edge) -> sp.spmatrix :
         """
         Build the diffusion matrix A for a given energy group using
         the standard finite difference formulation.
@@ -247,11 +250,6 @@ class Solver:
                 D_left  = self.materials[i]._diff_coef[group]
                 D_right = self.materials[i+1]._diff_coef[group]
 
-
-                # Moyenne harmonique
-                D_int = (D_left + D_right)/self.step[i]
-
-                # Mise à jour de la matrice au nœud d’interface
                 A_up[done+j] = -D_right / (self.step[i+1]) 
                 A_mid[done+j] = D_left/self.step[i] + D_right/self.step[i+1] + 1/2 * (self.step[i]*(self.materials[i]._a_xs[group] + np.sum(self.materials[i]._scat_xs[group,:]))+self.step[i+1]*(self.materials[i+1]._a_xs[group]+ np.sum(self.materials[i+1]._scat_xs[group,:])))
                 A_down[done+j-1] = -D_left / (self.step[i])
@@ -290,17 +288,11 @@ class Solver:
                     A_mid[done+j] = a
                     A_down[done+j-1] = D
                 if (i != len(self.materials)-1 and j == self.nb_nodes_region[i]-1):
-                    #SI l'on est sur le dernier point d'une région
 
                     j+=1
                     D_left  = self.materials[i]._diff_coef[group]
                     D_right = self.materials[i+1]._diff_coef[group]
 
-
-                    # Moyenne harmonique
-                    D_int = (D_left + D_right)/self.step[i]
-
-                    # Mise à jour de la matrice au nœud d’interface
                     A_up[done+j] = -D_right / (self.step[i+1]) 
                     A_mid[done+j] = D_left/self.step[i] + D_right/self.step[i+1] + 1/2 * (self.step[i]*(self.materials[i]._a_xs[group] + np.sum(self.materials[i]._scat_xs[group,:]))+self.step[i+1]*(self.materials[i+1]._a_xs[group]+ np.sum(self.materials[i+1]._scat_xs[group,:])))
                     A_down[done+j-1] = -D_left / (self.step[i])
@@ -310,7 +302,7 @@ class Solver:
 
         return A
 
-    def spatial_matrix_A(self,group,plot,edge) -> sp.spmatrix :
+    def spatial_matrix_A(self,group,edge) -> sp.spmatrix :
         """
         Select and build the diffusion matrix A for a given group
         depending on the chosen numerical method.
@@ -332,11 +324,11 @@ class Solver:
 
         match self.method: 
             case default:
-                A = self.A_B_Pi(group,plot,edge)
+                A = self.A_B_Pi(group,edge)
         return A
  
 
-    def spatial_matrix_S(self,group_in,group_out,plot,edge) -> sp.spmatrix :
+    def spatial_matrix_S(self,group_in,group_out,edge) -> sp.spmatrix :
         """
         Build the scattering matrix S between two energy groups.
 
@@ -367,13 +359,13 @@ class Solver:
         done = 0
         for i in range(len(self.materials)):
 
-            a = self.materials[i]._scat_xs[group_out,group_in]
+            s = self.materials[i]._scat_xs[group_in,group_out]
 
             if self.nb_nodes_region[i] == 0:
                 j=0
 
-                S_up[done+j] = 1/2 * self.step[i+1] * self.materials[i+1]._scat_xs[group_out,group_in]
-                S_down[done+j-1] = 1/2 * self.step[i] * self.materials[i]._scat_xs[group_out,group_in]
+                S_up[done+j] = 1/2 * self.step[i+1] * self.materials[i+1]._scat_xs[group_in,group_out]
+                S_down[done+j-1] = 1/2 * self.step[i] * self.materials[i]._scat_xs[group_in,group_out]
 
                 done += 1
                 continue
@@ -381,29 +373,29 @@ class Solver:
             for j in range(self.nb_nodes_region[i]):
                 
                 
-                if ((i == 0 and j == 0) or (i==len(self.materials)-1 and j == self.nb_nodes_region[i]-1)) and not(edge):
+                if (i == 0 and j == 0) and not(edge) :
+                    continue
+                elif (i==len(self.materials)-1 and j == self.nb_nodes_region[i]-1) and not(edge):
                     continue
                 elif  (i == 0 and j == 0)  and edge:
-                    S_mid[done+j] = 1/2 * self.step[i] * self.materials[i]._scat_xs[group_out,group_in]
+                    S_mid[done+j] = 1/2 * self.step[i] * self.materials[i]._scat_xs[group_in,group_out]
                     continue
                 elif (i==len(self.materials)-1 and j == self.nb_nodes_region[i]-1) and edge:
-                    S_mid[done+j] = 1/2*self.step[i] * self.materials[i]._scat_xs[group_out,group_in]
+                    S_mid[done+j] = 1/2*self.step[i] * self.materials[i]._scat_xs[group_in,group_out]
                     continue
 
                 else :
-                    S_mid[done+j] = a 
+                    S_mid[done+j] = s 
 
 
                 if (i != len(self.materials)-1 and j == self.nb_nodes_region[i]-1):
-                    #Si l'on arrive à la fin d'une région et que ce n'est pas 
-                    #la dernière du domaine 1D
 
-
+                    S_up[done+j] = 1/2 * self.step[i] * self.materials[i]._scat_xs[group_in,group_out]
+                    
                     j += 1
                     
                     S_mid[done+j] = 0
-                    S_up[done+j] = 1/2 * self.step[i+1] * self.materials[i+1]._scat_xs[group_out,group_in]
-                    S_down[done+j-1] = 1/2 * self.step[i] * self.materials[i]._scat_xs[group_out,group_in]
+                    S_down[done+j] = 1/2 * self.step[i+1] * self.materials[i+1]._scat_xs[group_in,group_out]
                     
 
             done += j +1  
@@ -412,7 +404,7 @@ class Solver:
 
         return S
     
-    def spatial_matrix_F(self,group_in,group_out,plot,edge) -> sp.spmatrix :
+    def spatial_matrix_F(self,group_in,group_out,edge) -> sp.spmatrix :
 
         """
         Build the fission production matrix F.
@@ -471,12 +463,13 @@ class Solver:
                     F_mid[done+j] = f
 
                 if(i != len(self.materials)-1 and j == self.nb_nodes_region[i]-1):
+                    F_up[done+j] = 1/2 * self.step[i] * self.materials[i]._nu_f_xs[group_in,group_out]
+
 
                     j+=1
 
                     F_mid[done+j] = 0
-                    F_up[done+j] = 1/2 * self.step[i+1] * self.materials[i+1]._nu_f_xs[group_in,group_out]
-                    F_down[done+j-1] = 1/2 * self.step[i] * self.materials[i]._nu_f_xs[group_in,group_out]
+                    F_down[done+j] = 1/2 * self.step[i+1] * self.materials[i+1]._nu_f_xs[group_in,group_out]
                     
             done += j +1 
         
@@ -484,7 +477,7 @@ class Solver:
 
         return F
     
-    def compute(self,itext,itint,eps,relax:float):
+    def compute(self,itext,itint,eps,relax:float) -> None:
         """
         Solve the neutron diffusion eigenvalue problem using
         a power iteration scheme with relaxation.
@@ -515,17 +508,16 @@ class Solver:
         The final flux is normalized such that its sum equals 1.
         The multiplication factor is stored in `self.k`.
         """
-        self.phi = np.ones((self.G_eff*self.nb_nodes),float)
+        self.phi = np.ones((self.G_eff*self.nb_nodes,1),float)
         k = 1
-        Q =  self.phi @ (self.S + self.F)
-
-        phinew = np.zeros((self.G_eff*self.nb_nodes),float)
+        Q =  (self.S + self.F) @ self.phi
+        phinew = np.zeros((self.G_eff*self.nb_nodes,1),float)
         err_k = float(0)
         err_q = float(0)
         for i in range(itext):
-            phinew = spla.spsolve(self.A.tocsr(),Q)
+            phinew = spla.spsolve(self.A.tocsr(),Q).reshape(-1,1)
             Q_old = Q.copy()
-            Q  = relax*(phinew @ ((1/k)*self.F + self.S)) + (1-relax)*Q_old
+            Q  = relax*( ((1/k)*self.F + self.S) @ phinew) + (1-relax)*Q_old
             k_old = k 
             k = relax*(k_old * ((Q.sum())/(Q_old.sum()))) + (1-relax)*k_old
             err_k = np.absolute(k - k_old)
@@ -544,7 +536,7 @@ class Solver:
 
         return 
     
-    def expand_flux(self):
+    def expand_flux(self) -> np.ndarray :
         """
         Reconstruct the full multigroup flux vector including inactive groups.
 
@@ -566,11 +558,10 @@ class Solver:
         G_full = self.groups
         G_eff = self.G_eff
 
-        phi_full = np.zeros(G_full * N)
+        phi_full = np.zeros((G_full * N))
 
-        # Remap reduced flux → full flux
         for i_new, i_old in enumerate(self.active_groups):
-            phi_full[i_old*N:(i_old+1)*N] = self.phi[i_new*N:(i_new+1)*N]
+            phi_full[i_old*N:(i_old+1)*N] = self.phi[i_new*N:(i_new+1)*N,0]
 
         return phi_full
         
