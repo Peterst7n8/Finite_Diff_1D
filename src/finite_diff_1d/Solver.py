@@ -1,9 +1,10 @@
-from .Materials import *
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
-import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
+import numpy as np
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
+
+from .Materials import *
 
 
 def extrapolated_distance(mat: Material, h: float, over: bool = True):
@@ -30,18 +31,20 @@ def extrapolated_distance(mat: Material, h: float, over: bool = True):
         Adjusted distance compatible with the discretization.
     """
 
-    distance = np.min(3 * mat._diff_coef)
+    distance = np.min(3 * mat.diff_coef)
 
     if h >= 0.5:
         if over:
-            return (int(distance / h) + 1) * h
+            result = (int(distance / h) + 1) * h
         else:
-            return int(distance / h) * h
+            result = int(distance / h) * h
     else:
         if over:
-            return (int((0.7104 * distance) / h) + 1) * h
+            result = (int((0.7104 * distance) / h) + 1) * h
         else:
-            return (int((0.7104 * distance) / h)) * h
+            result = (int((0.7104 * distance) / h)) * h
+
+    return result
 
 
 class Solver:
@@ -104,50 +107,69 @@ class Solver:
         step : list of float, discretization step of each Material
         """
 
-        self.groups = groups
-        i = 0
-        self.materials = np.zeros(len(geom), Material)
-        self.region_size = np.zeros(len(geom))
-        for mat, val in geom.items():
-            self.materials[i] = mat
-            self.region_size[i] = val
-            i += 1
-        self.step = step
+        self._groups = groups
+        self._materials = np.zeros(len(geom), Material)
+        self._region_size = np.zeros(len(geom))
 
-        self.nb_nodes = int(0)
-        self.nb_nodes_region = np.zeros(len(geom), int)
-        if len(self.materials) != len(self.step):
-            if len(self.materials) >= len(self.step):
-                raise ValueError("Invalid input : not enough discretization steps or " "too many materials")
-            else:
-                raise ValueError("Invalid input : too many discretization steps or too few " "Materials")
+        for i, (mat, val) in enumerate(geom.items()):
+            self._materials[i] = mat
+            self._region_size[i] = val
 
-        if len(self.materials) != 1:
-            for i in range(len(self.materials)):
-                reste = self.region_size[i] - step[i] * round(self.region_size[i] / step[i])
-                tol = 1e-9
-                if reste <= tol:
-                    self.nb_nodes += int(self.region_size[i] / self.step[i])
-                    if i == 0 or i == len(self.materials) - 1:
-                        self.nb_nodes_region[i] = self.region_size[i] / self.step[i]
-                    else:
-                        self.nb_nodes_region[i] = (self.region_size[i] / self.step[i]) - 1
-                else:
-                    print(self.region_size[i], step[i])
-                    print(self.region_size[i] // step[i], self.region_size[i] % step[i])
-                    raise ValueError("Discretization step incompatible with domain sizes")
-            self.nb_nodes += 1
-        else:
-            self.nb_nodes = int(self.region_size[0] / self.step[0]) + 1
-            self.nb_nodes_region = [self.nb_nodes]
+        self._step = step
+        self._nb_nodes = int(0)
+        self._nb_nodes_region = np.zeros(len(geom), int)
 
-        self.method = method
-        self.bc_right = bc_right
-        self.bc_left = bc_left
+        self._make_nodes_and_nodes_regions()
+
+        self._method = method
+        self._bc_right = bc_right
+        self._bc_left = bc_left
 
         self._prep_matrixes(plot=plot, edge=edge)
 
-    def _prep_matrixes(self, plot, edge) -> None:
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    # property                                                                                                                                       #
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    @property
+    def nb_nodes(self) -> int:
+        return self._nb_nodes
+
+    @property
+    def groups(self) -> int:
+        return self._groups
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    # private metthods                                                                                                                               #
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    def _make_nodes_and_nodes_regions(self) -> None:
+        len_mats = len(self._materials)
+
+        if len_mats != len(self._step):
+            raise ValueError(
+                f"Invalid input : number of discretization steps ({len(self._step)}) does not match the number of materials ({len_mats})"
+            )
+
+        if len_mats != 1:
+            for i in range(len_mats):
+                reste = self._region_size[i] - self._step[i] * round(self._region_size[i] / self._step[i])
+                tol = 1e-9
+                if reste <= tol:
+                    self._nb_nodes += int(self._region_size[i] / self._step[i])
+                    if i == 0 or i == len_mats - 1:
+                        self._nb_nodes_region[i] = self._region_size[i] / self._step[i]
+                    else:
+                        self._nb_nodes_region[i] = (self._region_size[i] / self._step[i]) - 1
+                else:
+                    print(self._region_size[i], self._step[i])
+                    print(self._region_size[i] // self._step[i], self._region_size[i] % self._step[i])
+                    raise ValueError("Discretization step incompatible with domain sizes")
+            self._nb_nodes += 1
+
+        else:
+            self._nb_nodes = int(self._region_size[0] / self._step[0]) + 1
+            self._nb_nodes_region = [self._nb_nodes]
+
+    def _prep_matrixes(self, plot: bool = False, edge: bool = False) -> None:
         """
         Assemble the global matrices A, S, and F for all energy groups.
 
@@ -163,12 +185,12 @@ class Solver:
 
         active_groups = []
 
-        for g in range(self.groups):
+        for g in range(self._groups):
             is_active = False
 
-            for mat in self.materials:
+            for mat in self._materials:
 
-                if mat._a_xs[g] > 0 or np.any(mat._nu_f_xs[g, :]) or np.any(mat._scat_xs[g, :]):
+                if mat.a_xs[g] > 0 or np.any(mat.nu_f_xs[g, :]) or np.any(mat.scat_xs[g, :]):
                     is_active = True
                     break
 
@@ -178,26 +200,14 @@ class Solver:
         if len(active_groups) == 0:
             raise ValueError("No active energy groups found.")
 
-        self.active_groups = active_groups
-        self.G_eff = len(active_groups)
+        self._active_groups = active_groups
+        self._G_eff = len(self._active_groups)
 
-        N = self.nb_nodes
-        G = self.G_eff
+        self.A = self._make_matrixes("A", self._spatial_matrix_A, edge)
 
-        self.A = sp.lil_matrix((N * G, N * G), dtype=float)
-        self.S = sp.lil_matrix((N * G, N * G), dtype=float)
-        self.F = sp.lil_matrix((N * G, N * G), dtype=float)
+        self.S = self._make_matrixes("S", self._spatial_matrix_S, edge)
 
-        for i in range(G):
-            self.A[i * self.nb_nodes : (i + 1) * self.nb_nodes, i * self.nb_nodes : (i + 1) * self.nb_nodes] = self.spatial_matrix_A(i, edge)
-        for g_out in range(G):
-            for g_in in range(G):
-                self.S[g_in * self.nb_nodes : (g_in + 1) * self.nb_nodes, g_out * self.nb_nodes : (g_out + 1) * self.nb_nodes] = (
-                    self.spatial_matrix_S(g_out, g_in, edge)
-                )
-                self.F[g_in * self.nb_nodes : (g_in + 1) * self.nb_nodes, g_out * self.nb_nodes : (g_out + 1) * self.nb_nodes] = (
-                    self.spatial_matrix_F(g_out, g_in, edge)
-                )
+        self.F = self._make_matrixes("F", self._spatial_matrix_F, edge)
 
         if plot:
             ax = plt.matshow(self.S.toarray(), norm=colors.LogNorm())
@@ -215,7 +225,44 @@ class Solver:
             plt.title("Matrix A")
             plt.show()
 
-    def A_B_Pi(self, group, edge) -> sp.spmatrix:
+    def _make_matrixes(self, name: str, fct, edge) -> sp.coo_matrix:
+        rows = []
+        cols = []
+        data = []
+
+        N = self._nb_nodes
+        G = self._G_eff
+
+        if name == "A":
+            print(f"Init of matrix {name} will take {G} loops")
+            for g in range(G):
+                print(f"Starting loop n°{g+1}")
+                bloc = fct(g, edge).tocoo()
+                offset = g * N
+                rows.append(bloc.row + offset)
+                cols.append(bloc.col + offset)
+                data.append(bloc.data)
+
+            matrix = sp.coo_matrix((np.concatenate(data), (np.concatenate(rows), np.concatenate(cols))), shape=(N * G, N * G)).tocsr()
+
+        else:
+            print(f"Init of matrices {name} will take {G*G} loops")
+            for g_in in range(G):
+                for g_out in range(G):
+                    print(f"Starting loop n°{g_in * G + g_out + 1}")
+                    bloc = fct(g_in, g_out, edge)
+                    offset_row = g_out * self._nb_nodes
+                    offset_col = g_in * self._nb_nodes
+                    coo = bloc.tocoo()
+                    rows.append(coo.row + offset_row)
+                    cols.append(coo.col + offset_col)
+                    data.append(coo.data)
+
+            matrix = sp.coo_matrix((np.concatenate(data), (np.concatenate(rows), np.concatenate(cols))), shape=(N * G, N * G)).tocsr()
+
+        return matrix
+
+    def _A_B_Pi(self, group: int, edge: bool) -> sp.spmatrix:
         """
         Build the diffusion matrix A for a given energy group using
         the standard finite difference formulation.
@@ -244,102 +291,105 @@ class Solver:
             Tridiagonal diffusion matrix for the group.
         """
 
-        A_mid = np.zeros((int(self.nb_nodes)), dtype=float)
-        A_up = np.zeros((int(self.nb_nodes) - 1), dtype=float)
-        A_down = np.zeros((int(self.nb_nodes) - 1), dtype=float)
+        A_mid = np.zeros((int(self._nb_nodes)), dtype=float)
+        A_up = np.zeros((int(self._nb_nodes) - 1), dtype=float)
+        A_down = np.zeros((int(self._nb_nodes) - 1), dtype=float)
 
         done = 0
-        for i in range(len(self.materials)):
+        for i in range(len(self._materials)):
             a = (
-                (2 * (self.materials[i]._diff_coef[group]) / self.step[i] ** 2)
-                + self.materials[i]._a_xs[group]
-                + np.sum(self.materials[i]._scat_xs[group, :])
+                (2 * (self._materials[i].diff_coef[group]) / self._step[i] ** 2)
+                + self._materials[i].a_xs[group]
+                + np.sum(self._materials[i].scat_xs[group, :])
             )
-            D = -(self.materials[i]._diff_coef[group]) / (self.step[i] ** 2)
+            D = -(self._materials[i].diff_coef[group]) / (self._step[i] ** 2)
 
-            if self.nb_nodes_region[i] == 0:
+            if self._nb_nodes_region[i] == 0:
                 j = 0
-                D_left = self.materials[i]._diff_coef[group]
-                D_right = self.materials[i + 1]._diff_coef[group]
+                D_left = self._materials[i].diff_coef[group]
+                D_right = self._materials[i + 1].diff_coef[group]
 
-                A_up[done + j] = -D_right / (self.step[i + 1])
+                A_up[done + j] = -D_right / (self._step[i + 1])
                 A_mid[done + j] = (
-                    D_left / self.step[i]
-                    + D_right / self.step[i + 1]
+                    D_left / self._step[i]
+                    + D_right / self._step[i + 1]
                     + 1
                     / 2
                     * (
-                        self.step[i] * (self.materials[i]._a_xs[group] + np.sum(self.materials[i]._scat_xs[group, :]))
-                        + self.step[i + 1] * (self.materials[i + 1]._a_xs[group] + np.sum(self.materials[i + 1]._scat_xs[group, :]))
+                        self._step[i] * (self._materials[i].a_xs[group] + np.sum(self._materials[i].scat_xs[group, :]))
+                        + self._step[i + 1] * (self._materials[i + 1].a_xs[group] + np.sum(self._materials[i + 1].scat_xs[group, :]))
                     )
                 )
-                A_down[done + j - 1] = -D_left / (self.step[i])
+                A_down[done + j - 1] = -D_left / (self._step[i])
 
                 done += 1
                 continue
 
-            for j in range(self.nb_nodes_region[i]):
+            for j in range(self._nb_nodes_region[i]):
                 if i == 0 and j == 0:
-                    match self.bc_left:
+                    match self._bc_left:
                         case "reflective":
-                            A_up[done + j] = -(self.materials[i]._diff_coef[group]) / (self.step[i])
+                            A_up[done + j] = -(self._materials[i].diff_coef[group]) / (self._step[i])
                             if edge:
                                 A_mid[done + j] = (
-                                    (self.materials[i]._diff_coef[group]) / (self.step[i])
-                                    + self.materials[i]._a_xs[group]
-                                    + np.sum(self.materials[i]._scat_xs[group, :])
+                                    (self._materials[i].diff_coef[group]) / (self._step[i])
+                                    + self._materials[i].a_xs[group]
+                                    + np.sum(self._materials[i].scat_xs[group, :])
                                 )
                             else:
-                                A_mid[done + j] = (self.materials[i]._diff_coef[group]) / (self.step[i])
+                                A_mid[done + j] = (self._materials[i].diff_coef[group]) / (self._step[i])
                         case "void":
                             A_up[done + j] = D
-                        case default:
-                            raise ValueError("Unrecognised BC type for left BC")
-                elif i == len(self.materials) - 1 and j == self.nb_nodes_region[i] - 1:
-                    match self.bc_right:
+                        case _:
+                            raise ValueError(f"Unrecognised BC type for left BC : {self._bc_left}")
+
+                elif i == len(self._materials) - 1 and j == self._nb_nodes_region[i] - 1:
+                    match self._bc_right:
                         case "reflective":
-                            A_down[-1] = -(self.materials[i]._diff_coef[group]) / (self.step[i])
+                            A_down[-1] = -(self._materials[i].diff_coef[group]) / (self._step[i])
                             if edge:
                                 A_mid[done + j] = (
-                                    (self.materials[i]._diff_coef[group]) / (self.step[i])
-                                    + self.materials[i]._a_xs[group]
-                                    + np.sum(self.materials[i]._scat_xs[group, :])
+                                    (self._materials[i].diff_coef[group]) / (self._step[i])
+                                    + self._materials[i].a_xs[group]
+                                    + np.sum(self._materials[i].scat_xs[group, :])
                                 )
                             else:
-                                A_mid[done + j] = (self.materials[i]._diff_coef[group]) / (self.step[i])
+                                A_mid[done + j] = (self._materials[i].diff_coef[group]) / (self._step[i])
                         case "void":
                             A_down[-1] = D
-                        case default:
-                            raise ValueError("Unrecognised BC type for right BC")
+                        case _:
+                            raise ValueError(f"Unrecognised BC type for right BC : {self._bc_right}")
+
                 else:
                     A_up[done + j] = D
                     A_mid[done + j] = a
                     A_down[done + j - 1] = D
-                if i != len(self.materials) - 1 and j == self.nb_nodes_region[i] - 1:
+                if i != len(self._materials) - 1 and j == self._nb_nodes_region[i] - 1:
 
                     j += 1
-                    D_left = self.materials[i]._diff_coef[group]
-                    D_right = self.materials[i + 1]._diff_coef[group]
+                    D_left = self._materials[i].diff_coef[group]
+                    D_right = self._materials[i + 1].diff_coef[group]
 
-                    A_up[done + j] = -D_right / (self.step[i + 1])
+                    A_up[done + j] = -D_right / (self._step[i + 1])
                     A_mid[done + j] = (
-                        D_left / self.step[i]
-                        + D_right / self.step[i + 1]
+                        D_left / self._step[i]
+                        + D_right / self._step[i + 1]
                         + 1
                         / 2
                         * (
-                            self.step[i] * (self.materials[i]._a_xs[group] + np.sum(self.materials[i]._scat_xs[group, :]))
-                            + self.step[i + 1] * (self.materials[i + 1]._a_xs[group] + np.sum(self.materials[i + 1]._scat_xs[group, :]))
+                            self._step[i] * (self._materials[i].a_xs[group] + np.sum(self._materials[i].scat_xs[group, :]))
+                            + self._step[i + 1] * (self._materials[i + 1].a_xs[group] + np.sum(self._materials[i + 1].scat_xs[group, :]))
                         )
                     )
-                    A_down[done + j - 1] = -D_left / (self.step[i])
+                    A_down[done + j - 1] = -D_left / (self._step[i])
+
             done += j + 1
 
         A = sp.diags([A_down, A_mid, A_up], [-1, 0, 1])
 
         return A
 
-    def spatial_matrix_A(self, group, edge) -> sp.spmatrix:
+    def _spatial_matrix_A(self, group: int, edge: bool) -> sp.spmatrix:
         """
         Select and build the diffusion matrix A for a given group
         depending on the chosen numerical method.
@@ -359,12 +409,13 @@ class Solver:
             Diffusion matrix for the group.
         """
 
-        match self.method:
-            case default:
-                A = self.A_B_Pi(group, edge)
+        match self._method:
+            case _:
+                A = self._A_B_Pi(group, edge)
+
         return A
 
-    def spatial_matrix_S(self, group_in, group_out, edge) -> sp.spmatrix:
+    def _spatial_matrix_S(self, group_in: int, group_out: int, edge: bool) -> sp.spmatrix:
         """
         Build the scattering matrix S between two energy groups.
 
@@ -388,48 +439,48 @@ class Solver:
             Scattering matrix.
         """
 
-        S_up = np.zeros((self.nb_nodes - 1), float)
-        S_mid = np.zeros((self.nb_nodes), float)
-        S_down = np.zeros((self.nb_nodes - 1), float)
+        S_up = np.zeros((self._nb_nodes - 1), float)
+        S_mid = np.zeros((self._nb_nodes), float)
+        S_down = np.zeros((self._nb_nodes - 1), float)
 
         done = 0
-        for i in range(len(self.materials)):
+        for i in range(len(self._materials)):
 
-            s = self.materials[i]._scat_xs[group_in, group_out]
+            s = self._materials[i].scat_xs[group_in, group_out]
 
-            if self.nb_nodes_region[i] == 0:
+            if self._nb_nodes_region[i] == 0:
                 j = 0
 
-                S_up[done + j] = 1 / 2 * self.step[i + 1] * self.materials[i + 1]._scat_xs[group_in, group_out]
-                S_down[done + j - 1] = 1 / 2 * self.step[i] * self.materials[i]._scat_xs[group_in, group_out]
+                S_up[done + j] = 1 / 2 * self._step[i + 1] * self._materials[i + 1].scat_xs[group_in, group_out]
+                S_down[done + j - 1] = 1 / 2 * self._step[i] * self._materials[i].scat_xs[group_in, group_out]
 
                 done += 1
                 continue
 
-            for j in range(self.nb_nodes_region[i]):
+            for j in range(self._nb_nodes_region[i]):
 
                 if (i == 0 and j == 0) and not (edge):
                     continue
-                elif (i == len(self.materials) - 1 and j == self.nb_nodes_region[i] - 1) and not (edge):
+                elif (i == len(self._materials) - 1 and j == self._nb_nodes_region[i] - 1) and not (edge):
                     continue
                 elif (i == 0 and j == 0) and edge:
-                    S_mid[done + j] = 1 / 2 * self.step[i] * self.materials[i]._scat_xs[group_in, group_out]
+                    S_mid[done + j] = 1 / 2 * self._step[i] * self._materials[i].scat_xs[group_in, group_out]
                     continue
-                elif (i == len(self.materials) - 1 and j == self.nb_nodes_region[i] - 1) and edge:
-                    S_mid[done + j] = 1 / 2 * self.step[i] * self.materials[i]._scat_xs[group_in, group_out]
+                elif (i == len(self._materials) - 1 and j == self._nb_nodes_region[i] - 1) and edge:
+                    S_mid[done + j] = 1 / 2 * self._step[i] * self._materials[i].scat_xs[group_in, group_out]
                     continue
 
                 else:
                     S_mid[done + j] = s
 
-                if i != len(self.materials) - 1 and j == self.nb_nodes_region[i] - 1:
+                if i != len(self._materials) - 1 and j == self._nb_nodes_region[i] - 1:
 
-                    S_up[done + j] = 1 / 2 * self.step[i] * self.materials[i]._scat_xs[group_in, group_out]
+                    S_up[done + j] = 1 / 2 * self._step[i] * self._materials[i].scat_xs[group_in, group_out]
 
                     j += 1
 
                     S_mid[done + j] = 0
-                    S_down[done + j] = 1 / 2 * self.step[i + 1] * self.materials[i + 1]._scat_xs[group_in, group_out]
+                    S_down[done + j] = 1 / 2 * self._step[i + 1] * self._materials[i + 1].scat_xs[group_in, group_out]
 
             done += j + 1
 
@@ -437,7 +488,7 @@ class Solver:
 
         return S
 
-    def spatial_matrix_F(self, group_in, group_out, edge) -> sp.spmatrix:
+    def _spatial_matrix_F(self, group_in: int, group_out: int, edge: bool) -> sp.spmatrix:
         """
         Build the fission production matrix F.
 
@@ -461,46 +512,46 @@ class Solver:
             Fission matrix.
         """
 
-        F_mid = np.zeros((self.nb_nodes), dtype=float)
-        F_up = np.zeros((self.nb_nodes - 1), dtype=float)
-        F_down = np.zeros((self.nb_nodes - 1), dtype=float)
+        F_mid = np.zeros((self._nb_nodes), dtype=float)
+        F_up = np.zeros((self._nb_nodes - 1), dtype=float)
+        F_down = np.zeros((self._nb_nodes - 1), dtype=float)
 
         done = 0
-        for i in range(len(self.materials)):
+        for i in range(len(self._materials)):
 
-            f = self.materials[i]._nu_f_xs[group_in, group_out]
+            f = self._materials[i]._nu_f_xs[group_in, group_out]
 
-            if self.nb_nodes_region[i] == 0:
+            if self._nb_nodes_region[i] == 0:
                 j = 0
 
                 F_mid[done + j] = 0
-                F_up[done + j] = 1 / 2 * self.step[i + 1] * self.materials[i + 1]._nu_f_xs[group_in, group_out]
-                F_down[done + j - 1] = 1 / 2 * self.step[i] * self.materials[i]._nu_f_xs[group_in, group_out]
+                F_up[done + j] = 1 / 2 * self._step[i + 1] * self._materials[i + 1].nu_f_xs[group_in, group_out]
+                F_down[done + j - 1] = 1 / 2 * self._step[i] * self._materials[i].nu_f_xs[group_in, group_out]
 
                 done += 1
                 continue
 
-            for j in range(self.nb_nodes_region[i]):
+            for j in range(self._nb_nodes_region[i]):
 
-                if ((i == 0 and j == 0) or (i == len(self.materials) - 1 and j == self.nb_nodes_region[i] - 1)) and not (edge):
+                if ((i == 0 and j == 0) or (i == len(self._materials) - 1 and j == self._nb_nodes_region[i] - 1)) and not (edge):
                     continue
                 elif (i == 0 and j == 0) and edge:
-                    F_mid[done + j] = 1 / 2 * self.materials[i]._nu_f_xs[group_in, group_out]
-                elif (i == len(self.materials) - 1 and j == self.nb_nodes_region[i] - 1) and edge:
-                    F_mid[done + j] = 1 / 2 * self.materials[i]._nu_f_xs[group_in, group_out]
-                elif self.method == "A-H":
-                    F_up[done + j] = 1 / 2 * self.materials[i]._nu_f_xs[group_in, group_out]
-                    F_down[done + j - 1] = 1 / 2 * self.materials[i]._nu_f_xs[group_in, group_out]
+                    F_mid[done + j] = 1 / 2 * self._materials[i].nu_f_xs[group_in, group_out]
+                elif (i == len(self._materials) - 1 and j == self._nb_nodes_region[i] - 1) and edge:
+                    F_mid[done + j] = 1 / 2 * self._materials[i].nu_f_xs[group_in, group_out]
+                elif self._method == "A-H":
+                    F_up[done + j] = 1 / 2 * self._materials[i].nu_f_xs[group_in, group_out]
+                    F_down[done + j - 1] = 1 / 2 * self._materials[i].nu_f_xs[group_in, group_out]
                 else:
                     F_mid[done + j] = f
 
-                if i != len(self.materials) - 1 and j == self.nb_nodes_region[i] - 1:
-                    F_up[done + j] = 1 / 2 * self.step[i] * self.materials[i]._nu_f_xs[group_in, group_out]
+                if i != len(self._materials) - 1 and j == self._nb_nodes_region[i] - 1:
+                    F_up[done + j] = 1 / 2 * self._step[i] * self._materials[i].nu_f_xs[group_in, group_out]
 
                     j += 1
 
                     F_mid[done + j] = 0
-                    F_down[done + j] = 1 / 2 * self.step[i + 1] * self.materials[i + 1]._nu_f_xs[group_in, group_out]
+                    F_down[done + j] = 1 / 2 * self._step[i + 1] * self._materials[i + 1].nu_f_xs[group_in, group_out]
 
             done += j + 1
 
@@ -508,6 +559,38 @@ class Solver:
 
         return F
 
+    def _expand_flux(self) -> np.ndarray:
+        """
+        Reconstruct the full multigroup flux vector including inactive groups.
+
+        The solver operates on a reduced system where inactive energy groups
+        (with zero cross-sections) have been removed. This function rebuilds
+        the full flux vector by inserting zeros for those inactive groups.
+
+        Returns
+        -------
+        phi_full : ndarray
+            Full flux vector of size (groups * nb_nodes), where inactive
+            groups are filled with zeros.
+        """
+
+        if not hasattr(self, "_active_groups"):
+            raise ValueError("Active groups not defined. Run prep_matrixes() first.")
+
+        N = self._nb_nodes
+        G_full = self._groups
+        # G_eff = self._G_eff
+
+        phi_full = np.zeros((G_full * N))
+
+        for i_new, i_old in enumerate(self._active_groups):
+            phi_full[i_old * N : (i_old + 1) * N] = self.phi[i_new * N : (i_new + 1) * N, 0]
+
+        return phi_full
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    # public metthods                                                                                                                                #
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
     def compute(self, itext, itint, eps, relax: float) -> None:
         """
         Solve the neutron diffusion eigenvalue problem using
@@ -539,13 +622,15 @@ class Solver:
         The final flux is normalized such that its sum equals 1.
         The multiplication factor is stored in `self.k`.
         """
-        self.phi = np.ones((self.G_eff * self.nb_nodes, 1), float)
+        self.phi = np.ones((self._G_eff * self._nb_nodes, 1), float)
         k = 1
         Q = (self.S + self.F) @ self.phi
-        phinew = np.zeros((self.G_eff * self.nb_nodes, 1), float)
+        phinew = np.zeros((self._G_eff * self._nb_nodes, 1), float)
         err_k = float(0)
         err_q = float(0)
+
         for i in range(itext):
+
             phinew = spla.spsolve(self.A.tocsr(), Q).reshape(-1, 1)
             Q_old = Q.copy()
             Q = relax * (((1 / k) * self.F + self.S) @ phinew) + (1 - relax) * Q_old
@@ -561,37 +646,7 @@ class Solver:
         self.k = k
         self.phi = phinew / phinew.sum()
 
-        self.phi = self.expand_flux()
+        self.phi = self._expand_flux()
         self.phi = np.nan_to_num(self.phi / self.phi.sum(), nan=0)
-        self.phi
 
-        return
-
-    def expand_flux(self) -> np.ndarray:
-        """
-        Reconstruct the full multigroup flux vector including inactive groups.
-
-        The solver operates on a reduced system where inactive energy groups
-        (with zero cross-sections) have been removed. This function rebuilds
-        the full flux vector by inserting zeros for those inactive groups.
-
-        Returns
-        -------
-        phi_full : ndarray
-            Full flux vector of size (groups * nb_nodes), where inactive
-            groups are filled with zeros.
-        """
-
-        if not hasattr(self, "active_groups"):
-            raise ValueError("Active groups not defined. Run prep_matrixes() first.")
-
-        N = self.nb_nodes
-        G_full = self.groups
-        G_eff = self.G_eff
-
-        phi_full = np.zeros((G_full * N))
-
-        for i_new, i_old in enumerate(self.active_groups):
-            phi_full[i_old * N : (i_old + 1) * N] = self.phi[i_new * N : (i_new + 1) * N, 0]
-
-        return phi_full
+        return 0

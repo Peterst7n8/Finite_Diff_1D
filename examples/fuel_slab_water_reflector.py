@@ -1,8 +1,11 @@
-from finite_diff_1d import Material, Solver, extrapolated_distance
-import scipy.interpolate as interp
-import time
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import scipy.interpolate as interp
+import time, os
+
+from pathlib import Path
+
+from finite_diff_1d import Material, Solver, extrapolated_distance
 
 """
 Author : Pierre Boussemart
@@ -40,6 +43,9 @@ Ouput :
 
 start = time.time()
 
+directory = Path(__file__).parent
+os.chdir(directory)
+
 # We start by defining the fuel composition, even though there is no use to it (macroscopic cross sections
 # are given to the code hence no conversion from microscopic to macroscopic is needed)
 
@@ -54,13 +60,13 @@ fuel_density = 10.5
 fuel = Material(nuclides=fuel_comp, macro=True, density=fuel_density, groups=4)
 
 # We import the multigroup scattering matrix
-fuel.get_macro_xs("scat", "./examples/mgxs_water_void/xs_scat_core.csv")
+fuel.get_macro_xs("scat", f"{directory}/mgxs_water_void/xs_scat_core.csv")
 # We import the multigroup fission matrix
-fuel.get_macro_xs("fiss", "./examples/mgxs_water_void/xs_f_core.csv")
+fuel.get_macro_xs("fiss", f"{directory}/mgxs_water_void/xs_f_core.csv")
 # We import the multigroup absorption cross section
-fuel.get_macro_xs("abs", "./examples/mgxs_water_void/xs_a_core.csv")
+fuel.get_macro_xs("abs", f"{directory}/mgxs_water_void/xs_a_core.csv")
 # We import the multigroup diffusion coefficient
-fuel.get_diff("./examples/mgxs_water_void/diff_core.csv")
+fuel.get_diff(f"{directory}/mgxs_water_void/diff_core.csv")
 
 # We repeat the operation for the water Material :
 # - definition of composition,
@@ -73,11 +79,11 @@ refl_density = 1
 refl = Material(nuclides=refl_comp, macro=True, density=refl_density, groups=4)
 
 # We import the multigroup scattering matrix
-refl.get_macro_xs("scat", "./examples/mgxs_water_void/xs_scat_refl.csv")
+refl.get_macro_xs("scat", f"{directory}/mgxs_water_void/xs_scat_refl.csv")
 # We import the multigroup absorption cross section
-refl.get_macro_xs("abs", "./examples/mgxs_water_void/xs_a_refl.csv")
+refl.get_macro_xs("abs", f"{directory}/mgxs_water_void/xs_a_refl.csv")
 # We import the multigroup diffusion coefficient
-refl.get_diff("./examples/mgxs_water_void/diff_refl.csv")
+refl.get_diff(f"{directory}/mgxs_water_void/diff_refl.csv")
 
 t_xs = time.time() - start
 start = time.time()
@@ -96,7 +102,7 @@ start = time.time()
 # Hence we had the distance d to the first and last regions of the domain
 
 # We precise the discretization step
-h = 0.1
+h = 0.0005
 
 # We calculate the extrapolated distance using the function extrapolated_distance
 # defined in Solver.py
@@ -177,7 +183,7 @@ flux_thermique = flux_thermique / flux_thermique.max()
 flux_rapide = flux_rapide / flux_rapide.max()
 
 # We load the reference thermal and fast flux generated via OpenMC
-flux_mc = np.loadtxt("./examples/flux_mc_w_void.csv", dtype=float)
+flux_mc = np.loadtxt(f"{directory}/flux_mc_w_void.csv", dtype=float)
 
 # We normalize it too
 flux_th_mc = flux_mc[:, 0] / flux_mc[:, 0].max()
