@@ -4,7 +4,7 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-from .Materials import *
+from .materials import *
 
 
 def extrapolated_distance(mat: Material, h: float, over: bool = True):

@@ -1,4 +1,4 @@
-from .Materials import Material
-from .Solver import extrapolated_distance, Solver
+from .materials import Material
+from .solver import extrapolated_distance, Solver
 
 __all__ = ["Material", "Solver", "extrapolated_distance"]
