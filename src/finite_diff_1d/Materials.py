@@ -1,8 +1,8 @@
-import uuid
+import json as js
 import numpy as np
 import periodictable as pt
 import scipy.constants as scpcst
-import json as js
+import uuid
 
 """
 Author : Pierre Boussemart
@@ -44,65 +44,6 @@ This module is intended for educational and research purposes only and can conta
 """
 
 
-def index(lines, key) -> int:
-    """
-    Return the column index corresponding to a given key in a CSV-like list of lines.
-
-    Parameters
-    ----------
-    lines : list of str
-        Lines of a CSV file (including header).
-    key : str
-        Column name to search for.
-
-    Returns
-    -------
-    int
-        Index of the column where the key is found.
-    """
-    for n, line in enumerate(lines):
-        for j in range(len(line.split(","))):
-            if key in line.split(",")[j]:
-                return j
-
-
-def get_isotope_mass(isotope_key: str):
-    """
-    Retrieve the molar mass of a given isotope from its name.
-
-    Parameters
-    ----------
-    isotope_key : str
-        Isotope name (e.g., 'U238', 'O16').
-
-    Returns
-    -------
-    float
-        Molar mass of the isotope in g/mol.
-
-    Raises
-    ------
-    ValueError
-        If the isotope mass is unknown.
-    """
-    symbol = "".join(filter(str.isalpha, isotope_key))
-    mass_number = int("".join(filter(str.isdigit, isotope_key)))
-
-    element = getattr(pt, symbol)
-    if mass_number != 0:
-        isotope = element[mass_number]
-    else:
-        if element.mass is None:
-            raise ValueError(f"Unknown mass for {isotope_key}")
-        else:
-            return element.mass
-
-    if isotope.mass is None:
-        raise ValueError(f"Unknown mass for {isotope_key}")
-
-    return isotope.mass
-
-
 class Material:
     """
     Represents a material used in neutron transport or diffusion calculations.
@@ -133,132 +74,62 @@ class Material:
             Number of energy groups.
         """
 
-        self.macro = macro
-        self.groups = groups
-        if macro:
-            if nuclides != None:
-                self.nuclides = self._normalize(nuclides)
-            else:
-                self.nuclides = None
-            self._scat_xs = np.zeros((groups, groups), float)
-            self._a_xs = np.zeros((self.groups), float)
-            self._nu_f_xs = np.zeros((groups, groups), float)
-            self._diff_coef = np.zeros((groups), float)
-            if density <= 0:
-                self.density = None
-            else:
-                self.density = density
-
+        self._macro = macro
+        self._groups = groups
+        self._nuclides = nuclides
+        self._density = density
+        if not self._density or self._density <= 0:
+            self._density = None
         else:
-            self.nuclides = self._normalize(nuclides)
-            self.density = density
-            self._scat_xs = np.zeros((groups, groups), float)
-            self._a_xs = np.zeros((groups), float)
-            self._nu_f_xs = np.zeros((groups, groups), float)
-            self._diff_coef = np.zeros((groups), float)
+            self._density = density
+
+        if self._nuclides != None:
+            self._normalize_nuclides()
+
+        self._scat_xs = np.zeros((groups, groups), float)
+        self._a_xs = np.zeros((self._groups), float)
+        self._nu_f_xs = np.zeros((groups, groups), float)
+        self._diff_coef = np.zeros((groups), float)
 
         self._hash_id = int(uuid.uuid4())
 
-    @staticmethod
-    def _normalize(nuclides: dict[str, float]) -> dict[str, float]:
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    # property                                                                                                                                       #
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    @property
+    def scat_xs(self):
+        return self._scat_xs
+
+    @property
+    def a_xs(self):
+        return self._a_xs
+
+    @property
+    def nu_f_xs(self):
+        return self._nu_f_xs
+
+    @property
+    def diff_coef(self):
+        return self._diff_coef
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    # private metthods                                                                                                                               #
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    def _normalize_nuclides(self):
         """
         Normalize atomic fractions so their sum equals 1.
-
-        Parameters
-        ----------
-        nuclides : dict[str, float]
-
-        Returns
-        -------
-        dict[str, float]
-            Normalized atomic fractions.
 
         Raises
         ------
         ValueError
             If the total fraction is non-positive.
         """
-        total = sum(nuclides.values())
+        total = sum(self._nuclides.values())
         if total <= 0:
             raise ValueError("Composition problem")
-        return {isotope: fraction / total for isotope, fraction in nuclides.items()}
+        return {isotope: fraction / total for isotope, fraction in self._nuclides.items()}
 
-    @property
-    def molar_mass(self):
-        """
-        Compute the molar mass of the material.
-
-        Returns
-        -------
-        float
-            Molar mass in g/mol.
-        """
-        total_fraction = sum(self.nuclides.values())
-        if total_fraction <= 0:
-            raise ValueError("Input composition and atomic fractions prevent computation of the molar mass")
-
-        molar_mass = 0
-        for isotope, fraction in self.nuclides.items():
-            molar_mass += fraction * get_isotope_mass(isotope)
-        return molar_mass
-
-    def clone(self):
-        """
-        Create a deep copy of the material.
-
-        Returns
-        -------
-        Material
-            A new Material instance with identical properties.
-        """
-        new_mat = Material(nuclides=self.nuclides.copy() if self.nuclides else None, macro=self.macro, density=self.density, groups=self.groups)
-
-        new_mat._scat_xs = self._scat_xs.copy()
-        new_mat._a_xs = self._a_xs.copy()
-        new_mat._nu_f_xs = self._nu_f_xs.copy()
-        new_mat._diff_coef = self._diff_coef.copy()
-
-        return new_mat
-
-    def __str__(self):
-        """
-        Return a string representation of the material.
-        """
-        tab = str("\n")
-        for k, v in self.nuclides.items():
-            tab += f"{k} = {v}"
-            tab += "\n"
-        return f"nuclides : {tab}\nmacro : {self.macro}\ndensity : {self.density}\ngroups = {self.groups}\n"
-
-    def __eq__(self, other):
-        """
-        Compare two Material objects for equality.
-
-        Returns
-        -------
-        bool
-        """
-        if not (isinstance(other, Material)):
-            return False
-        return (
-            self.nuclides == other.nuclides
-            and self.macro == other.macro
-            and self.density == other.density
-            and self.groups == other.groups
-            and self._hash_id == other._hash_id
-        )
-
-    def __hash__(self):
-        """
-        Return a hash value for the material.
-
-        Returns
-        -------
-        int
-        """
-        return hash((js.dumps(self.nuclides, sort_keys=True), self.groups, self.density))
-
-    def get_conc(self, nuclide: str = "", units: str = ""):
+    def _get_conc(self, nuclide: str = "", units: str = ""):
         """
         Compute the atomic concentration of a given nuclide.
 
@@ -279,22 +150,120 @@ class Material:
         ValueError
             If density or composition is not defined, or nuclide is unknown.
         """
-        if self.density == None:
+        if self._density == None:
             raise ValueError("density isn't set")
 
-        if self.nuclides == None:
+        if self._nuclides == None:
             raise ValueError("Nuclides and fractions list doesn't exist")
 
-        if not (nuclide in self.nuclides.keys()):
-            raise ValueError("Unrecognised nuclide")
+        if not (nuclide in self._nuclides.keys()):
+            raise ValueError(f"Unrecognised nuclide: {nuclide}")
 
-        conc = self.nuclides[nuclide] * ((self.density * scpcst.Avogadro) / self.molar_mass)
+        conc = self._nuclides[nuclide] * ((self._density * scpcst.Avogadro) / self._get_molar_mass())
 
         if units == "b/cm":
             conc = conc / 1e24
-            return conc
 
         return conc
+
+    def _get_molar_mass(self):
+        """
+        Compute the molar mass of the material.
+
+        Returns
+        -------
+        float
+            Molar mass in g/mol.
+        """
+        total_fraction = sum(self._nuclides.values())
+        if total_fraction <= 0:
+            raise ValueError("Input composition and atomic fractions prevent computation of the molar mass")
+
+        molar_mass = 0.0
+        for isotope, fraction in self._nuclides.items():
+            molar_mass += fraction * self._get_isotope_mass(isotope)
+
+        return molar_mass
+
+    @staticmethod
+    def _column_index(lines: list[str], key: str) -> int:
+        """
+        Return the column index corresponding to a given key in a CSV-like list of lines.
+
+        Parameters
+        ----------
+        lines : list[str]
+            Lines of a CSV file (including header).
+        key : str
+            Column name to search for.
+
+        Returns
+        -------
+        int
+            Index of the column where the key is found.
+        """
+        for line in lines:
+            for j, field in enumerate(line.split(",")):
+                if key in field:
+                    return j
+
+    @staticmethod
+    def _get_isotope_mass(isotope_key: str):
+        """
+        Retrieve the molar mass of a given isotope from its name.
+
+        Parameters
+        ----------
+        isotope_key : str
+            Isotope name (e.g., 'U238', 'O16').
+
+        Returns
+        -------
+        float
+            Molar mass of the isotope in g/mol.
+
+        Raises
+        ------
+        ValueError
+            If the isotope mass is unknown.
+        """
+        symbol = "".join(filter(str.isalpha, isotope_key))
+        mass_number = int("".join(filter(str.isdigit, isotope_key)))
+
+        element = getattr(pt, symbol)
+        if mass_number != 0:
+            isotope = element[mass_number]
+        else:
+            if element.mass is None:
+                raise ValueError(f"Unknown mass for {isotope_key}")
+            else:
+                return element.mass
+
+        if isotope.mass is None:
+            raise ValueError(f"Unknown mass for {isotope_key}")
+
+        return isotope.mass
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    # public metthods                                                                                                                                #
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    def clone(self):
+        """
+        Create a deep copy of the material.
+
+        Returns
+        -------
+        Material
+            A new Material instance with identical properties.
+        """
+        new_mat = Material(nuclides=self._nuclides.copy() if self._nuclides else None, macro=self._macro, density=self._density, groups=self._groups)
+
+        new_mat._scat_xs = self._scat_xs.copy()
+        new_mat._a_xs = self._a_xs.copy()
+        new_mat._nu_f_xs = self._nu_f_xs.copy()
+        new_mat._diff_coef = self._diff_coef.copy()
+
+        return new_mat
 
     def get_macro_xs(self, type: str = "scat", filename: str = "", xs_type: str = "macro"):
         """
@@ -311,11 +280,12 @@ class Material:
         """
         file_xs = open(filename, "r")
         lines = file_xs.readlines()
+
         if type == "scat":
-            mean = index(lines, "mean")
-            group_in = index(lines, "group in")
-            group_out = index(lines, "group out")
-            nuclide_ind = index(lines[:1], "nuclide")
+            mean = self._column_index(lines, "mean")
+            group_in = self._column_index(lines, "group in")
+            group_out = self._column_index(lines, "group out")
+            nuclide_ind = self._column_index(lines[:1], "nuclide")
 
             for n, line in enumerate(lines[1:]):
                 g_in = int(line.split(",")[group_in]) - 1
@@ -325,17 +295,20 @@ class Material:
                     self._scat_xs[g_in, g_out] += float(line.split(",")[mean])
                 elif xs_type == "micro":
                     nuclide = line.split(",")[nuclide_ind]
-                    conc = self.get_conc(nuclide, "b/cm")
+
+                    print("oayo", line)
+
+                    conc = self._get_conc(nuclide, "b/cm")
                     self._scat_xs[g_in, g_out] += conc * float(line.split(",")[mean])
 
             for n in range(self._scat_xs.shape[0]):
                 self._scat_xs[n, n] = 0
 
         elif type == "fiss":
-            mean = index(lines, "mean")
-            group_in = index(lines, "group in")
-            group_out = index(lines, "group out")
-            nuclide_ind = index(lines[:1], "nuclide")
+            mean = self._column_index(lines, "mean")
+            group_in = self._column_index(lines, "group in")
+            group_out = self._column_index(lines, "group out")
+            nuclide_ind = self._column_index(lines[:1], "nuclide")
             for n, line in enumerate(lines[1:]):
                 g_in = int(line.split(",")[group_in]) - 1
                 g_out = int(line.split(",")[group_out]) - 1
@@ -343,22 +316,24 @@ class Material:
                     self._nu_f_xs[g_in, g_out] += float(line.split(",")[mean])
                 elif xs_type == "micro":
                     nuclide = line.split(",")[nuclide_ind]
-                    conc = self.get_conc(nuclide, "b/cm")
+                    conc = self._get_conc(nuclide, "b/cm")
                     self._nu_f_xs[g_in, g_out] += conc * float(lines.split(",")[mean])
+
         elif type == "abs":
-            mean = index(lines, "mean")
-            nuclide_ind = index(lines[:1], "nuclide")
+            mean = self._column_index(lines, "mean")
+            nuclide_ind = self._column_index(lines[:1], "nuclide")
             grp = 0
             for n, line in enumerate(lines[1:]):
                 if xs_type == "macro":
                     self._a_xs[grp] += float(line.split(",")[mean])
                 elif xs_type == "micro":
                     nuclide = line.split(",")[nuclide_ind]
-                    conc = self.get_conc(nuclide, "b/cm")
+                    conc = self._get_conc(nuclide, "b/cm")
                     self._a_xs[grp] += conc * float(line.split(",")[mean])
                 grp += 1
+
         else:
-            raise ValueError()
+            raise ValueError(f"Unknown cross section type: {type} must be 'scat', 'abs', 'fiss', or 'diff'")
 
     def get_diff(self, filename: str = ""):
         """
@@ -371,11 +346,9 @@ class Material:
         """
         file_xs = open(filename, "r")
         lines = file_xs.readlines()
-        mean = index(lines, "mean")
-        grp = 0
+        mean = self._column_index(lines, "mean")
         for n, line in enumerate(lines[1:]):
-            self._diff_coef[grp] = float(line.split(",")[mean])
-            grp += 1
+            self._diff_coef[n] = float(line.split(",")[mean])
 
     def get_xs(self, nuclide: str = "", type: str = "scat", filename: str = "") -> None:
         """
@@ -391,14 +364,14 @@ class Material:
             Path to the CSV file.
         """
         file_xs = open(filename, "r")
-        conc = self.get_conc(nuclide, "b/cm")
+        conc = self._get_conc(nuclide, "b/cm")
         lines = file_xs.readlines()
         if type == "scat":
-            mean = index(lines, "mean")
-            group_in = index(lines, "group in")
-            group_out = index(lines, "group out")
-            nuclide_ind = index(lines, "nuclide")
-            nuclide_scat = np.zeros((self.groups, self.groups), float)
+            mean = self._column_index(lines, "mean")
+            group_in = self._column_index(lines, "group in")
+            group_out = self._column_index(lines, "group out")
+            nuclide_ind = self._column_index(lines, "nuclide")
+            nuclide_scat = np.zeros((self._groups, self._groups), float)
             for n, line in enumerate(lines[1:]):
                 if line.split(",")[nuclide_ind] == nuclide:
                     g_in = int(line.split(",")[group_in]) - 1
@@ -407,40 +380,87 @@ class Material:
             for n in range(np.shape(nuclide_scat)[0]):
                 nuclide_scat[n, n] = 0
             self._scat_xs += conc * nuclide_scat
+
         elif type == "fiss":
-            mean = index(lines, "mean")
-            group_in = index(lines, "group in")
-            group_out = index(lines, "group out")
-            nuclide_ind = index(lines, "nuclide")
-            nuclide_fiss = np.zeros((self.groups, self.groups), float)
+            mean = self._column_index(lines, "mean")
+            group_in = self._column_index(lines, "group in")
+            group_out = self._column_index(lines, "group out")
+            nuclide_ind = self._column_index(lines, "nuclide")
+            nuclide_fiss = np.zeros((self._groups, self._groups), float)
             for n, line in enumerate(lines[1:]):
                 if line.split(",")[nuclide_ind] == nuclide:
                     g_in = int(line.split(",")[group_in]) - 1
                     g_out = int(line.split(",")[group_out]) - 1
                     nuclide_fiss[g_in, g_out] = line.split(",")[mean]
             self._nu_f_xs += conc * nuclide_fiss
+
         elif type == "abs":
-            mean = index(lines, "mean")
-            nuclide_ind = index(lines, "nuclide")
+            mean = self._column_index(lines, "mean")
+            nuclide_ind = self._column_index(lines, "nuclide")
             grp = 0
-            nuclide_abs = np.zeros(self.groups, float)
+            nuclide_abs = np.zeros(self._groups, float)
             for n, line in enumerate(lines[1:]):
                 if line.split(",")[nuclide_ind] == nuclide:
                     nuclide_abs[grp] = line.split(",")[mean]
                     grp += 1
             self._a_xs += conc * nuclide_abs
+
         else:
-            raise ValueError()
+            raise ValueError(f"Unknown cross section type: {type} must be 'scat', 'abs', 'fiss', or 'diff'")
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    # interface                                                                                                                                      #
+    # ---------------------------------------------------------------------------------------------------------------------------------------------- #
+    def __str__(self):
+        """
+        Return a string representation of the material.
+        """
+        tab = str("\n")
+        for k, v in self._nuclides.items():
+            tab += f"{k} = {v}"
+            tab += "\n"
+
+        return f"nuclides : {tab}\nmacro : {self._macro}\ndensity : {self._density}\ngroups = {self._groups}\n"
+
+    def __eq__(self, other):
+        """
+        Compare two Material objects for equality.
+
+        Returns
+        -------
+        bool
+        """
+        if not (isinstance(other, Material)):
+            return False
+
+        return (
+            self._nuclides == other._nuclides
+            and self._macro == other._macro
+            and self._density == other._density
+            and self._groups == other._groups
+            and self._hash_id == other._hash_id
+        )
+
+    def __hash__(self):
+        """
+        Return a hash value for the material.
+
+        Returns
+        -------
+        int
+        """
+        return hash((js.dumps(self._nuclides, sort_keys=True), self._groups, self._density))
 
 
 if __name__ == "__main__":
+    # TODO: faire des tests unitaires et d'intégration à la place de ce main
 
     s = Material(nuclides={"U238": 0.8, "U235": 0.2, "O16": 2}, macro=False, density=10.5, groups=70)
-    s.get_xs("U238", "scat", "./solv_num/mgxs_nuclide/xs_scat_core.csv")
-    s.get_xs("U235", "scat", "./solv_num/mgxs_nuclide/xs_scat_core.csv")
-    s.get_xs("O16", "scat", "./solv_num/mgxs_nuclide/xs_scat_core.csv")
-    print(s._scat_xs)
+    # s.get_xs("U238", "scat", "./solv_num/mgxs_nuclide/xs_scat_core.csv")
+    # s.get_xs("U235", "scat", "./solv_num/mgxs_nuclide/xs_scat_core.csv")
+    # s.get_xs("O16", "scat", "./solv_num/mgxs_nuclide/xs_scat_core.csv")
+    # print(s._scat_xs)
 
     test = Material(nuclides={"U238": 0.8, "U235": 0.2, "O16": 2}, macro=True, groups=70, density=10.5)
-    test.get_macro_xs("scat", "./solv_num/mgxs_nuclide/xs_scat_core.csv", "micro")
-    print(test._scat_xs)
+    # test.get_macro_xs("scat", "./solv_num/mgxs_nuclide/xs_scat_core.csv", "micro")
+    # print(test._scat_xs)
