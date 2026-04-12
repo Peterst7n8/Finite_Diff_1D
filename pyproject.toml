@@ -3,18 +3,20 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "finite_diff_1d"
+name = "finite-diff-1d"
 version = "0.1.0"
 description = "1D multigroup neutron diffusion solver"
 authors = [
     { name = "Pierre Boussemart" }
 ]
+readme = "README.md"
+requires-python = ">=3.11"
 dependencies = [
-    "numpy",
-    "scipy",
-    "matplotlib",
-    "periodictable"
-
+    "numpy>=2.4.4",
+    "scipy>=1.17.1",
+    "matplotlib>=3.10.8",
+    "periodictable>=1.6.1",
+    "rich>=14.0.0",
 ]
 
 [tool.setuptools.packages.find]

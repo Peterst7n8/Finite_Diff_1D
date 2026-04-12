@@ -1,5 +1,20 @@
-.vscode/
+# Bytecode 
 __pycache__/
-*.py[cod]
+
+# Distribution / packaging
 *.egg-info/
-.eggs/
+
+# pyenv
+.python-version
+
+# UV
+uv.lock
+
+# Environments
+.venv
+
+# PyCharm
+.idea/
+
+# Visual Studio Code
+.vscode/
